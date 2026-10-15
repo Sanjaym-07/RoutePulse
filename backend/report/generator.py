@@ -90,7 +90,7 @@ All operations satisfy hard fleet and layover constraints.
         md += f"- **Operational Rationale:** {rec.get('reason')}\n"
         md += f"- **Quantified Trade-Off:** {rec.get('quantified_tradeoff')}\n\n"
 
-    md += """
+    md += r"""
 ---
 ## 4. Hard Constraint Certification
 The solver guarantees:

@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from './store/useAppStore';
 import { CampusMap } from './map/CampusMap';
 import { TopBar } from './components/TopBar';
 import { LeftRail } from './components/LeftRail';
 import { TimeScrubber } from './components/TimeScrubber';
+import { MapLegend } from './components/MapLegend';
+import { FirstRunTour } from './components/FirstRunTour';
 import { RightDrawer } from './panels/RightDrawer';
 import { PassengerPanel } from './panels/PassengerPanel';
 import { OverviewPanel } from './panels/OverviewPanel';
@@ -11,28 +13,59 @@ import { ForecastPanel } from './panels/ForecastPanel';
 import { FlagsPanel } from './panels/FlagsPanel';
 import { RecommendationsPanel } from './panels/RecommendationsPanel';
 import { ModelTrustPanel } from './panels/ModelTrustPanel';
+import { ResultsPanel } from './panels/ResultsPanel';
 import './styles/tokens.css';
 
 export const App: React.FC = () => {
-  const { isDark, activePanel, setActivePanel, isPassengerMode, fetchData, isLoading, error } =
+  const { isDark, activePanel, setActivePanel, isPassengerMode, fetchData, error } =
     useAppStore();
+
+  const [tourStep, setTourStep] = useState<number | null>(null);
 
   useEffect(() => {
     fetchData();
+    // Check if user has seen tour
+    const seenTour = localStorage.getItem('routepulse_seen_tour');
+    if (!seenTour) {
+      setTourStep(0);
+    }
   }, [fetchData]);
+
+  const handleNextTourStep = () => {
+    if (tourStep === null) return;
+    if (tourStep < 4) {
+      const next = tourStep + 1;
+      setTourStep(next);
+      if (next === 2) setActivePanel('flags');
+      else if (next === 3) setActivePanel('recommendations');
+      else if (next === 4) setActivePanel('results');
+    } else {
+      setTourStep(null);
+      localStorage.setItem('routepulse_seen_tour', 'true');
+    }
+  };
+
+  const handleSkipTour = () => {
+    setTourStep(null);
+    localStorage.setItem('routepulse_seen_tour', 'true');
+  };
+
+  const startTour = () => {
+    setTourStep(0);
+  };
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden ${!isDark ? 'light-theme' : ''}`}>
       {/* 1. Base Full-Screen Canvas Map */}
       <CampusMap />
 
-      {/* 2. Top Navigation Bar */}
-      <TopBar />
+      {/* 2. Top Navigation Bar (with Story Bar, Live Headline, and Tour trigger) */}
+      <TopBar onStartTour={startTour} />
 
       {/* 3. Left Navigation Icon Rail */}
       <LeftRail />
 
-      {/* 4. Sliding Left Panel (Overview, Forecast, Flags, Recommendations, Model Trust) */}
+      {/* 4. Sliding Left Panel */}
       {activePanel && !isPassengerMode && (
         <aside
           style={{
@@ -46,6 +79,7 @@ export const App: React.FC = () => {
           {activePanel === 'forecast' && <ForecastPanel />}
           {activePanel === 'flags' && <FlagsPanel />}
           {activePanel === 'recommendations' && <RecommendationsPanel />}
+          {activePanel === 'results' && <ResultsPanel />}
           {activePanel === 'modelTrust' && <ModelTrustPanel />}
         </aside>
       )}
@@ -56,8 +90,20 @@ export const App: React.FC = () => {
       {/* 6. Right Inspection Drawer (Stop / Trip Details) */}
       <RightDrawer />
 
-      {/* 7. Bottom Time Scrubber */}
+      {/* 7. Floating Map Legend */}
+      <MapLegend />
+
+      {/* 8. Bottom Time Scrubber */}
       <TimeScrubber />
+
+      {/* 9. First-Run Tour Modal */}
+      {tourStep !== null && (
+        <FirstRunTour
+          step={tourStep}
+          onNext={handleNextTourStep}
+          onSkip={handleSkipTour}
+        />
+      )}
 
       {/* Error Toast Notification if connection issue */}
       {error && (

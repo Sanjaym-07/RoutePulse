@@ -105,6 +105,8 @@ def health_check():
 
 @app.get("/api/data")
 def get_dataset():
+    if not campus_state.stops:
+        initialize_system()
     return {
         "stops": campus_state.stops,
         "routes": campus_state.routes,
@@ -380,6 +382,19 @@ async def route_geometry(coords: str):
     return await external_client.get_osrm_route(coord_list)
 
 # Mount frontend build static files if present
-FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend", "dist")
+from fastapi.responses import FileResponse
+# Root directory is two levels above backend/api/main.py
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+FRONTEND_DIST = os.path.join(PROJECT_ROOT, "frontend", "dist")
+
 if os.path.exists(FRONTEND_DIST):
-    app.mount("/", StaticFiles(directory=FRONTEND_DIST, html=True), name="frontend")
+    assets_dir = os.path.join(FRONTEND_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(FRONTEND_DIST, full_path)
+        if full_path and os.path.exists(file_path) and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(FRONTEND_DIST, "index.html"))

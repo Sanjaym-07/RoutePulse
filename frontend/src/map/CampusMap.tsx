@@ -7,61 +7,49 @@ export const CampusMap: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<{ [key: string]: any }>({});
+  const popupRef = useRef<any>(null);
 
-  const { stops, routes, simTimeSeconds, isDark, setSelectedStop, flags } = useAppStore();
-
-  // Helper to format scrubber seconds into HH:MM
-  const formatTime = (secs: number) => {
-    const h = Math.floor(secs / 3600);
-    const m = Math.floor((secs % 3600) / 60);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  };
+  const { stops, routes, isDark, setSelectedStop, flags } = useAppStore();
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
-    // Use CARTO raster tiles for high-contrast dark/light operations aesthetic
-    const style = isDark
-      ? {
-          version: 8 as const,
-          sources: {
-            'carto-dark': {
-              type: 'raster' as const,
-              tiles: ['https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png'],
-              tileSize: 256,
-              attribution: '© CARTO, OpenStreetMap contributors',
-            },
+    // Keyless OpenStreetMap tiles with dark fallback and dark mode raster filters
+    const style = {
+      version: 8 as const,
+      sources: {
+        'osm-tiles': {
+          type: 'raster' as const,
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors',
+          maxzoom: 19,
+        },
+      },
+      layers: [
+        {
+          id: 'background-fallback',
+          type: 'background' as const,
+          paint: {
+            'background-color': isDark ? '#090D16' : '#F3F4F6',
           },
-          layers: [
-            {
-              id: 'carto-dark-layer',
-              type: 'raster' as const,
-              source: 'carto-dark',
-              minzoom: 0,
-              maxzoom: 20,
-            },
-          ],
-        }
-      : {
-          version: 8 as const,
-          sources: {
-            'carto-light': {
-              type: 'raster' as const,
-              tiles: ['https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png'],
-              tileSize: 256,
-              attribution: '© CARTO, OpenStreetMap contributors',
-            },
-          },
-          layers: [
-            {
-              id: 'carto-light-layer',
-              type: 'raster' as const,
-              source: 'carto-light',
-              minzoom: 0,
-              maxzoom: 20,
-            },
-          ],
-        };
+        },
+        {
+          id: 'osm-raster-layer',
+          type: 'raster' as const,
+          source: 'osm-tiles',
+          minzoom: 0,
+          maxzoom: 19,
+          paint: isDark
+            ? {
+                'raster-brightness-max': 0.45,
+                'raster-saturation': -0.6,
+                'raster-contrast': 0.1,
+              }
+            : {},
+        },
+      ],
+    };
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
@@ -72,6 +60,7 @@ export const CampusMap: React.FC = () => {
       attributionControl: false,
     });
 
+    map.on('error', () => {});
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     mapRef.current = map;
 
@@ -145,20 +134,28 @@ export const CampusMap: React.FC = () => {
     }
   }, [routes, stops]);
 
-  // Update Stop Markers with live crowding indicators
+  // Update Stop Markers with live crowding indicators & hover popup
   useEffect(() => {
     const map = mapRef.current;
     if (!map || stops.length === 0) return;
 
     // Check which stops have active overcrowding flags
-    const activeCrowdedStops = new Set(
-      flags
-        .filter((f) => f.type === 'overcrowding' || f.type === 'capacity_violation')
-        .map((f) => f.stop_id)
+    const criticalStops = new Set(
+      flags.filter((f) => f.type === 'capacity_violation').map((f) => f.stop_id)
+    );
+    const warningStops = new Set(
+      flags.filter((f) => f.type === 'overcrowding').map((f) => f.stop_id)
     );
 
     stops.forEach((stop) => {
-      const isCrowded = activeCrowdedStops.has(stop.stop_id);
+      const isCritical = criticalStops.has(stop.stop_id);
+      const isWarning = warningStops.has(stop.stop_id);
+      const crowdingText = isCritical
+        ? 'Too full (over capacity)'
+        : isWarning
+        ? 'Getting full'
+        : 'Comfortable';
+
       let marker = markersRef.current[stop.stop_id];
 
       if (!marker) {
@@ -179,6 +176,34 @@ export const CampusMap: React.FC = () => {
           setSelectedStop(stop);
         });
 
+        // Hover tooltip showing stop name and current crowding in plain words
+        el.addEventListener('mouseenter', () => {
+          if (popupRef.current) popupRef.current.remove();
+          popupRef.current = new maplibregl.Popup({
+            closeButton: false,
+            closeOnClick: false,
+            offset: 15,
+            className: 'campus-stop-popup',
+          })
+            .setLngLat([stop.lon, stop.lat])
+            .setHTML(
+              `<div style="background:#111827; color:#F9FAFB; padding:6px 10px; border-radius:6px; font-size:11px; border:1px solid #374151; font-family:sans-serif; box-shadow:0 4px 12px rgba(0,0,0,0.5);">
+                <strong>${stop.stop_name}</strong>
+                <div style="color:${isCritical ? '#EF4444' : isWarning ? '#F59E0B' : '#10B981'}; font-weight:600; margin-top:2px;">
+                  Status: ${crowdingText}
+                </div>
+              </div>`
+            )
+            .addTo(map);
+        });
+
+        el.addEventListener('mouseleave', () => {
+          if (popupRef.current) {
+            popupRef.current.remove();
+            popupRef.current = null;
+          }
+        });
+
         marker = new maplibregl.Marker({ element: el })
           .setLngLat([stop.lon, stop.lat])
           .addTo(map);
@@ -188,18 +213,24 @@ export const CampusMap: React.FC = () => {
 
       // Update styling based on crowding
       const el = marker.getElement();
-      if (isCrowded) {
+      if (isCritical) {
         el.style.backgroundColor = 'var(--semantic-red)';
-        el.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.8)';
+        el.style.boxShadow = '0 0 12px rgba(239, 68, 68, 0.9)';
+      } else if (isWarning) {
+        el.style.backgroundColor = 'var(--semantic-amber)';
+        el.style.boxShadow = '0 0 10px rgba(245, 158, 11, 0.7)';
       } else {
-        el.style.backgroundColor = 'var(--semantic-blue)';
+        el.style.backgroundColor = 'var(--semantic-green)';
         el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)';
       }
     });
   }, [stops, flags, setSelectedStop]);
 
   return (
-    <div className="absolute inset-0 w-full h-full">
+    <div
+      style={{ backgroundColor: isDark ? '#090D16' : '#F3F4F6' }}
+      className="absolute inset-0 w-full h-full tour-map-canvas"
+    >
       <div ref={mapContainerRef} className="w-full h-full" />
     </div>
   );

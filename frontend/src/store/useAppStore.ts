@@ -95,13 +95,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   fetchData: async () => {
     set({ isLoading: true, error: null });
     try {
+      console.log('[RoutePulse] Fetching campus datasets from backend...');
+      const fetchWithCheck = async (url: string) => {
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: Failed to fetch ${url}`);
+        }
+        return res.json();
+      };
+
       const [dataRes, flagsRes, recsRes, evalRes, trustRes] = await Promise.all([
-        fetch('/api/data').then((r) => r.json()),
-        fetch('/api/flags').then((r) => r.json()),
-        fetch('/api/recommendations').then((r) => r.json()),
-        fetch('/api/evaluate').then((r) => r.json()),
-        fetch('/api/model-trust').then((r) => r.json()),
+        fetchWithCheck('/api/data'),
+        fetchWithCheck('/api/flags'),
+        fetchWithCheck('/api/recommendations'),
+        fetchWithCheck('/api/evaluate'),
+        fetchWithCheck('/api/model-trust'),
       ]);
+
+      console.log('[RoutePulse] /api/data payload:', dataRes);
+      console.log('[RoutePulse] Loaded:', {
+        stops: dataRes.stops?.length || 0,
+        routes: dataRes.routes?.length || 0,
+        vehicles: dataRes.vehicles?.length || 0,
+        trips: dataRes.schedule?.length || 0,
+      });
 
       set({
         stops: dataRes.stops || [],
@@ -116,24 +133,34 @@ export const useAppStore = create<AppState>((set, get) => ({
         evaluation: evalRes,
         modelTrust: trustRes,
         isLoading: false,
+        error: null,
       });
     } catch (e: any) {
+      console.error('[RoutePulse] Fetch error:', e);
       set({ error: e.message || 'Failed to connect to RoutePulse Engine', isLoading: false });
     }
   },
 
   fetchEvaluation: async (scenario = 'normal') => {
     try {
-      const evalRes = await fetch(`/api/evaluate?scenario=${scenario}`).then((r) => r.json());
+      const res = await fetch(`/api/evaluate?scenario=${scenario}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const evalRes = await res.json();
       set({ evaluation: evalRes });
-    } catch (e) {}
+    } catch (e: any) {
+      console.error('[RoutePulse] Failed to fetch evaluation:', e);
+    }
   },
 
   fetchFlags: async (scenario = 'normal') => {
     try {
-      const flagsRes = await fetch(`/api/flags?scenario=${scenario}`).then((r) => r.json());
+      const res = await fetch(`/api/flags?scenario=${scenario}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const flagsRes = await res.json();
       set({ flags: flagsRes.flags || [] });
-    } catch (e) {}
+    } catch (e: any) {
+      console.error('[RoutePulse] Failed to fetch flags:', e);
+    }
   },
 
   toggleRecommendation: async (id: string, apply: boolean) => {
@@ -142,9 +169,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, apply }),
-      }).then((r) => r.json());
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const evalRes = await res.json();
 
-      // Update active recommendations locally and refresh evaluation
       const currentActive = get().activeRecommendations;
       const updatedActive = apply
         ? Array.from(new Set([...currentActive, id]))
@@ -152,14 +180,15 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       set({
         activeRecommendations: updatedActive,
-        evaluation: res,
+        evaluation: evalRes,
       });
 
-      // Also refresh schedule & flags
       get().fetchFlags(get().currentScenario);
       const dataRes = await fetch('/api/data').then((r) => r.json());
       set({ schedule: dataRes.schedule || [] });
-    } catch (e) {}
+    } catch (e: any) {
+      console.error('[RoutePulse] Toggle error:', e);
+    }
   },
 
   setScenario: async (scenario: string) => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { X, Navigation, Share2, Calendar, Clock, AlertTriangle, TrendingUp, Bus } from 'lucide-react';
+import { X, Navigation, Share2, Calendar, Info } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { Stop, TripSchedule, ETAWindow } from '../types';
+import { ETAWindow } from '../types';
 
 export const RightDrawer: React.FC = () => {
   const { selectedStop, selectedTrip, setSelectedStop, setSelectedTrip, routes, schedule } =
@@ -12,7 +12,6 @@ export const RightDrawer: React.FC = () => {
   // When a stop is selected, find the next arriving trip to fetch ETA window
   useEffect(() => {
     if (selectedStop) {
-      // Find a trip that visits this stop
       const routeWithStop = routes.find((r) =>
         r.stops.some((s) => s.stop_id === selectedStop.stop_id)
       );
@@ -61,7 +60,7 @@ export const RightDrawer: React.FC = () => {
       <div className="flex items-start justify-between pb-3 border-b border-gray-800">
         <div>
           <span className="text-[10px] font-mono text-blue-400 uppercase tracking-wider block">
-            {selectedStop ? 'Campus Stop Inspection' : 'Trip Details'}
+            {selectedStop ? 'Stop Details' : 'Trip Details'}
           </span>
           <h3 className="text-sm font-bold text-white mt-0.5">
             {selectedStop ? selectedStop.stop_name : selectedTrip?.trip_id}
@@ -84,30 +83,40 @@ export const RightDrawer: React.FC = () => {
             {selectedStop.lat.toFixed(4)}° N, {Math.abs(selectedStop.lon).toFixed(4)}° W
           </div>
 
-          {/* ETA Arrival Window */}
+          {/* Arrival Window (Plain language: Earliest / Most likely / Latest arrival) */}
           {etaData && (
             <div
               style={{
                 backgroundColor: 'var(--bg-surface-elevated)',
                 borderColor: 'var(--border-subtle)',
               }}
-              className="p-3 rounded-lg border flex flex-col gap-2"
+              className="p-3 rounded-lg border flex flex-col gap-2.5"
             >
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-300 font-medium">Estimated Arrival Window</span>
-                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                <span className="text-gray-200 font-semibold flex items-center gap-1">
+                  Expected Arrival Window
+                  <span title="Calculated from traffic, road segment times, and passenger dwell delays" className="cursor-help text-gray-400">
+                    <Info size={12} />
+                  </span>
+                </span>
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded font-medium">
                   {etaData.confidence} Confidence
                 </span>
               </div>
 
               {/* Range Bar */}
               <div className="bg-gray-900/80 p-2.5 rounded border border-gray-800 flex flex-col gap-1.5">
-                <div className="flex justify-between text-xs font-mono font-bold text-white tabular-nums">
-                  <span className="text-gray-400">{etaData.eta_window.p10} (P10)</span>
-                  <span className="text-blue-400 text-sm">{etaData.eta_window.median} (Median)</span>
-                  <span className="text-gray-400">{etaData.eta_window.p90} (P90)</span>
+                <div className="flex justify-between text-[11px] font-medium text-gray-400">
+                  <span>Earliest</span>
+                  <span className="text-blue-400 font-semibold">Most likely</span>
+                  <span>Latest</span>
                 </div>
-                <div className="w-full bg-gray-800 h-2 rounded-full relative overflow-hidden">
+                <div className="flex justify-between text-xs font-mono font-bold text-white tabular-nums">
+                  <span className="text-gray-300">{etaData.eta_window.p10}</span>
+                  <span className="text-blue-400 text-sm">{etaData.eta_window.median}</span>
+                  <span className="text-gray-300">{etaData.eta_window.p90}</span>
+                </div>
+                <div className="w-full bg-gray-800 h-2 rounded-full relative overflow-hidden mt-1">
                   <div className="absolute left-[20%] right-[20%] bg-blue-500 h-full rounded-full opacity-80" />
                   <div className="absolute left-[50%] -top-0.5 w-1 h-3 bg-white rounded" />
                 </div>
@@ -116,7 +125,7 @@ export const RightDrawer: React.FC = () => {
               {/* Top Drivers ("Why") */}
               <div className="mt-1">
                 <span className="text-[10px] font-medium text-gray-400 block mb-1">
-                  Top 3 ML Arrival Drivers:
+                  Why this arrival window:
                 </span>
                 <ul className="text-[11px] text-gray-300 flex flex-col gap-1 list-disc pl-4">
                   {etaData.drivers.map((d, i) => (
@@ -153,7 +162,7 @@ export const RightDrawer: React.FC = () => {
                 className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium cursor-pointer transition-colors border border-gray-700"
               >
                 <Calendar size={13} />
-                <span>Add .ICS</span>
+                <span>Add to Calendar</span>
               </a>
             </div>
           </div>
